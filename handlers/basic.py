@@ -23,6 +23,9 @@ Available commands:
 /start - Start the bot
 /hello - Get a hello message
 /help - Show this help message
+/joke - Get a random joke
+
+/poll - Create a poll (usage: /poll "Question" "Option1" "Option2")
 /enable_janitor - Enable message filtering
 /disable_janitor - Disable message filtering
 /status - Display current chat settings
