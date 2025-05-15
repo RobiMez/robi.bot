@@ -148,7 +148,10 @@ async def filter_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Skip if there are no filter patterns
     if "filter_patterns" not in context.chat_data or not context.chat_data["filter_patterns"]:
         return
-    
+
+    if not update.message.text:
+        return
+
     # Skip commands, only filter regular messages
     if update.message.text.startswith('/'):
         return
