@@ -149,18 +149,21 @@ async def filter_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if "filter_patterns" not in context.chat_data or not context.chat_data["filter_patterns"]:
         return
 
-    if not update.message.text:
+    # Get the message content - could be either text or caption
+    message_content = update.message.text or update.message.caption
+    
+    # Skip if no text or caption
+    if not message_content:
         return
 
     # Skip commands, only filter regular messages
-    if update.message.text.startswith('/'):
+    if message_content.startswith('/'):
         return
     
     # Check message against each pattern
-    message_text = update.message.text
     for pattern in context.chat_data["filter_patterns"]:
         try:
-            if re.search(pattern, message_text, re.IGNORECASE):
+            if re.search(pattern, message_content, re.IGNORECASE):
                 # Try to delete the message
                 try:
                     user = update.effective_user
@@ -258,6 +261,9 @@ def register_filter_handlers(application):
     application.add_handler(CommandHandler("regex_help", regex_help))
     
     # Global message filter handler - should be added last to process after other handlers
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, filter_message), group=1)
+    application.add_handler(MessageHandler(
+        (filters.TEXT | filters.CAPTION) & ~filters.COMMAND, 
+        filter_message
+    ), group=1)
     
     logger.info("Filter handlers registered") 
