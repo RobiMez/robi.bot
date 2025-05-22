@@ -10,6 +10,7 @@ from handlers.conversation import register_conversation_handlers
 from handlers.filters import register_filter_handlers
 from handlers.diagnostics import register_diagnostic_handlers, track_chat
 from utils.logger import setup_logger
+from handlers.fun import register_fun_handlers
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, PicklePersistence, ChatMemberHandler, MessageHandler, filters, ContextTypes
@@ -47,7 +48,7 @@ def main() -> None:
     register_conversation_handlers(application)
     register_filter_handlers(application)
     register_diagnostic_handlers(application)
-    
+    register_fun_handlers(application)
     # Add a chat update handler to track groups
     application.add_handler(
         MessageHandler(filters.ALL, track_chat_activity),
