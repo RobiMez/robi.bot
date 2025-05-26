@@ -72,11 +72,32 @@ async def disable_janitor(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def show_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display the current settings."""
     janitor_status = context.chat_data.get("janitorEnabled", False)
-    status_text = "enabled" if janitor_status else "disabled"
+    channel_filter_status = context.chat_data.get("channelFilterEnabled", False)
     
-    await update.message.reply_text(
-        f"Current settings for this chat:\n\nJanitor: {status_text}"
-    )
+    # Count filter patterns
+    filter_count = 0
+    if "filter_patterns" in context.chat_data and context.chat_data["filter_patterns"]:
+        filter_count = len(context.chat_data["filter_patterns"])
+    
+    janitor_text = "enabled" if janitor_status else "disabled"
+    channel_filter_text = "enabled" if channel_filter_status else "disabled"
+    
+    status_text = f"""
+*Current settings for this chat:*
+
+🧹 *Janitor:* {janitor_text}
+📺 *Channel Filter:* {channel_filter_text}
+🔍 *Active Filters:* {filter_count} pattern(s)
+
+*Available Commands:*
+• `/enable_janitor` / `/disable_janitor` - Toggle message filtering
+• `/toggle_channel_filter` - Toggle external channel message filtering
+• `/add_filter <pattern>` - Add regex filter
+• `/remove_filter <number>` - Remove filter
+• `/list_filters` - Show all filters
+    """
+    
+    await update.message.reply_text(status_text, parse_mode="Markdown")
     logger.info(f"Settings displayed for chat {update.effective_chat.id}")
 
 

@@ -141,7 +141,73 @@ async def list_filters(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def filter_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Check if a message matches any filter patterns and delete if it does."""
-    # Skip if janitor is not enabled
+    # Log all message details for debugging
+    if update.message:
+        logger.info(f"Message update details:")
+        logger.info(f"  Chat ID: {update.effective_chat.id}")
+        logger.info(f"  Chat type: {update.effective_chat.type}")
+        logger.info(f"  From user: {update.message.from_user}")
+        logger.info(f"  Sender chat: {update.message.sender_chat}")
+        if update.message.sender_chat:
+            logger.info(f"    Sender chat ID: {update.message.sender_chat.id}")
+            logger.info(f"    Sender chat type: {update.message.sender_chat.type}")
+            logger.info(f"    Sender chat title: {update.message.sender_chat.title}")
+        logger.info(f"  Message text: {update.message.text[:50] if update.message.text else 'No text'}")
+        logger.info(f"  Is automatic forward: {update.message.is_automatic_forward}")
+        
+        # Check for forward origin safely
+        if hasattr(update.message, 'forward_origin') and update.message.forward_origin:
+            logger.info(f"  Forward origin: {update.message.forward_origin}")
+        else:
+            logger.info(f"  Forward origin: None")
+            
+        logger.info("---")
+
+    # Check channel filter first - delete ALL messages from external channels if enabled
+    if (context.chat_data.get("channelFilterEnabled", False) and
+        update.message.sender_chat and 
+        update.message.sender_chat.id != update.effective_chat.id and
+        update.message.sender_chat.type == "channel"):
+        
+        # Check if this channel is whitelisted
+        channel_whitelist = context.chat_data.get("channelWhitelist", [])
+        channel_username = update.message.sender_chat.username
+        channel_id = update.message.sender_chat.id
+        
+        # Skip deletion if channel is whitelisted (by username or ID)
+        if (channel_username and channel_username in channel_whitelist) or (str(channel_id) in channel_whitelist):
+            logger.info(f"Channel {channel_username or channel_id} is whitelisted, skipping deletion")
+            return
+        
+        try:
+            channel_name = update.message.sender_chat.title or f"Channel {update.message.sender_chat.id}"
+            await update.message.delete()
+            
+            # Send notification that will self-destruct
+            notification = await update.effective_chat.send_message(
+                f"🚫 Deleted a message from channel: {channel_name}",
+                parse_mode=ParseMode.HTML
+            )
+            
+            # Schedule deletion of our notification after 30 seconds
+            context.job_queue.run_once(
+                delete_message_job,
+                30,
+                data={
+                    'chat_id': update.effective_chat.id,
+                    'message_id': notification.message_id
+                }
+            )
+            
+            logger.info(f"Deleted channel message from {channel_name} in chat {update.effective_chat.id}")
+            return  # Exit early, don't process regex filters
+            
+        except BadRequest as e:
+            logger.error(f"Failed to delete channel message: {e} - Chat: {update.effective_chat.id}")
+        except Exception as e:
+            logger.error(f"Error deleting channel message: {e}")
+
+    # Skip regex filtering if janitor is not enabled
     if not context.chat_data.get("janitorEnabled", False):
         return
     
@@ -178,10 +244,10 @@ async def filter_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                         parse_mode=ParseMode.HTML
                     )
                     
-                    # Schedule deletion of our notification after 60 seconds
+                    # Schedule deletion of our notification after 30 seconds
                     context.job_queue.run_once(
                         delete_message_job,
-                        30,  # 60 seconds = 1 minute
+                        30,
                         data={
                             'chat_id': update.effective_chat.id,
                             'message_id': notification.message_id
@@ -215,7 +281,6 @@ async def delete_message_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.debug(f"Deleted notification message {message_id} in chat {chat_id}")
     except Exception as e:
         logger.error(f"Error deleting notification message: {e}")
-
 
 
 async def regex_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -252,6 +317,87 @@ Here are some common regex patterns you can use:
     logger.info(f"Regex help requested by user {update.effective_user.id} in chat {update.effective_chat.id}")
 
 
+@admin_only
+async def whitelist_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Add a channel to the whitelist."""
+    if not context.args or len(context.args) < 1:
+        await update.message.reply_text(
+            "Please provide a channel username or ID to whitelist.\n"
+            "Example: /whitelist_channel robiMakesStuff\n"
+            "Example: /whitelist_channel -1002092775911"
+        )
+        return
+    
+    channel_identifier = context.args[0].strip()
+    
+    # Remove @ if present
+    if channel_identifier.startswith('@'):
+        channel_identifier = channel_identifier[1:]
+    
+    # Initialize whitelist if it doesn't exist
+    if "channelWhitelist" not in context.chat_data:
+        context.chat_data["channelWhitelist"] = []
+    
+    # Add to whitelist if not already present
+    if channel_identifier not in context.chat_data["channelWhitelist"]:
+        context.chat_data["channelWhitelist"].append(channel_identifier)
+        await context.application.update_persistence()
+        await update.message.reply_text(f"✅ Added '{channel_identifier}' to channel whitelist")
+        logger.info(f"Added channel '{channel_identifier}' to whitelist in chat {update.effective_chat.id}")
+    else:
+        await update.message.reply_text(f"'{channel_identifier}' is already whitelisted")
+
+
+@admin_only
+async def unwhitelist_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove a channel from the whitelist."""
+    if not context.args or len(context.args) < 1:
+        await update.message.reply_text(
+            "Please provide a channel username or ID to remove from whitelist.\n"
+            "Use /list_whitelisted_channels to see all whitelisted channels."
+        )
+        return
+    
+    channel_identifier = context.args[0].strip()
+    
+    # Remove @ if present
+    if channel_identifier.startswith('@'):
+        channel_identifier = channel_identifier[1:]
+    
+    # Check if whitelist exists
+    if "channelWhitelist" not in context.chat_data or not context.chat_data["channelWhitelist"]:
+        await update.message.reply_text("No channels are whitelisted for this chat.")
+        return
+    
+    # Remove from whitelist
+    if channel_identifier in context.chat_data["channelWhitelist"]:
+        context.chat_data["channelWhitelist"].remove(channel_identifier)
+        await context.application.update_persistence()
+        await update.message.reply_text(f"✅ Removed '{channel_identifier}' from channel whitelist")
+        logger.info(f"Removed channel '{channel_identifier}' from whitelist in chat {update.effective_chat.id}")
+    else:
+        await update.message.reply_text(f"'{channel_identifier}' is not in the whitelist")
+
+
+async def list_whitelisted_channels(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List all whitelisted channels."""
+    if "channelWhitelist" not in context.chat_data or not context.chat_data["channelWhitelist"]:
+        await update.message.reply_text("No channels are whitelisted for this chat.")
+        return
+    
+    whitelist = context.chat_data["channelWhitelist"]
+    if not whitelist:
+        await update.message.reply_text("No channels are whitelisted for this chat.")
+        return
+    
+    whitelist_text = "\n".join([f"• `{channel}`" for channel in whitelist])
+    
+    await update.message.reply_text(
+        f"Whitelisted channels for this chat:\n{whitelist_text}",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
 def register_filter_handlers(application):
     """Register filter handlers with the application."""
     # Command handlers
@@ -259,8 +405,11 @@ def register_filter_handlers(application):
     application.add_handler(CommandHandler("remove_filter", remove_filter))
     application.add_handler(CommandHandler("list_filters", list_filters))
     application.add_handler(CommandHandler("regex_help", regex_help))
+    application.add_handler(CommandHandler("whitelist_channel", whitelist_channel))
+    application.add_handler(CommandHandler("unwhitelist_channel", unwhitelist_channel))
+    application.add_handler(CommandHandler("list_whitelisted_channels", list_whitelisted_channels))
     
-    # Global message filter handler - should be added last to process after other handlers
+    # Single message filter handler that handles both channel filtering and regex filtering
     application.add_handler(MessageHandler(
         (filters.TEXT | filters.CAPTION) & ~filters.COMMAND, 
         filter_message
