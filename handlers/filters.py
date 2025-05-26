@@ -163,11 +163,13 @@ async def filter_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
         logger.info("---")
 
-    # Check channel filter first - delete ALL messages from external channels if enabled
+    # Check channel filter first - delete messages from external channels if enabled
+    # BUT skip automatic forwards and whitelisted channels
     if (context.chat_data.get("channelFilterEnabled", False) and
         update.message.sender_chat and 
         update.message.sender_chat.id != update.effective_chat.id and
-        update.message.sender_chat.type == "channel"):
+        update.message.sender_chat.type == "channel" and
+        not update.message.is_automatic_forward):  # Skip automatic forwards
         
         # Check if this channel is whitelisted
         channel_whitelist = context.chat_data.get("channelWhitelist", [])
