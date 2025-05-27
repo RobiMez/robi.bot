@@ -119,6 +119,132 @@ async def check_admin_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Error checking admin status.")
 
 
+async def check_all_permissions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Debug command to check all permissions for the bot in the current chat."""
+    try:
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+        bot_id = context.bot.id
+        
+        # For private chats, bot has all permissions
+        if chat_type == "private":
+            await update.message.reply_text(
+                "✅ *Private Chat - Bot has all permissions*\n\n"
+                "In private chats, the bot can perform all actions.",
+                parse_mode="Markdown"
+            )
+            logger.info(f"Bot permission check: Bot {bot_id} in private chat - all permissions granted")
+            return
+        
+        # Get bot's member info in the chat
+        try:
+            bot_member = await update.effective_chat.get_member(bot_id)
+            status = bot_member.status
+            
+            # Build permission report for the bot
+            permission_text = f"*Bot Permission Report*\n\n"
+            permission_text += f"**Chat:** {update.effective_chat.title or 'Unknown'}\n"
+            permission_text += f"**Chat Type:** {chat_type}\n"
+            permission_text += f"**Bot Status:** {status}\n"
+            permission_text += f"**Bot ID:** {bot_id}\n\n"
+            
+            if status == "administrator":
+                # Check specific admin permissions for the bot
+                bot_perms = []
+                
+                # Critical permissions for bot functionality
+                if hasattr(bot_member, 'can_delete_messages') and bot_member.can_delete_messages:
+                    bot_perms.append("✅ Can delete messages")
+                else:
+                    bot_perms.append("❌ **Cannot delete messages** (CRITICAL)")
+                
+                if hasattr(bot_member, 'can_restrict_members') and bot_member.can_restrict_members:
+                    bot_perms.append("✅ Can restrict members")
+                else:
+                    bot_perms.append("❌ Cannot restrict members")
+                
+                if hasattr(bot_member, 'can_change_info') and bot_member.can_change_info:
+                    bot_perms.append("✅ Can change chat info")
+                else:
+                    bot_perms.append("❌ Cannot change chat info")
+                
+                if hasattr(bot_member, 'can_invite_users') and bot_member.can_invite_users:
+                    bot_perms.append("✅ Can invite users")
+                else:
+                    bot_perms.append("❌ Cannot invite users")
+                
+                if hasattr(bot_member, 'can_pin_messages') and bot_member.can_pin_messages:
+                    bot_perms.append("✅ Can pin messages")
+                else:
+                    bot_perms.append("❌ Cannot pin messages")
+                
+                if hasattr(bot_member, 'can_manage_chat') and bot_member.can_manage_chat:
+                    bot_perms.append("✅ Can manage chat")
+                else:
+                    bot_perms.append("❌ Cannot manage chat")
+                
+                if hasattr(bot_member, 'can_manage_video_chats') and bot_member.can_manage_video_chats:
+                    bot_perms.append("✅ Can manage video chats")
+                else:
+                    bot_perms.append("❌ Cannot manage video chats")
+                
+                permission_text += "🤖 **BOT IS ADMINISTRATOR**\n\n"
+                permission_text += "**Bot Permissions:**\n"
+                permission_text += "\n".join(bot_perms)
+                
+                # Check if bot can perform its core functions
+                can_delete = hasattr(bot_member, 'can_delete_messages') and bot_member.can_delete_messages
+                
+                permission_text += "\n\n**Bot Functionality Status:**\n"
+                if can_delete:
+                    permission_text += "✅ Message filtering will work\n"
+                    permission_text += "✅ Channel filtering will work\n"
+                    permission_text += "✅ Janitor mode will work"
+                else:
+                    permission_text += "❌ **Message filtering will NOT work**\n"
+                    permission_text += "❌ **Channel filtering will NOT work**\n"
+                    permission_text += "❌ **Janitor mode will NOT work**\n\n"
+                    permission_text += "⚠️ **Bot needs 'Delete Messages' permission to function properly!**"
+                
+            elif status == "member":
+                permission_text += "👤 **BOT IS REGULAR MEMBER**\n\n"
+                permission_text += "❌ **Bot has NO admin permissions**\n"
+                permission_text += "❌ **Cannot delete messages**\n"
+                permission_text += "❌ **Message filtering will NOT work**\n"
+                permission_text += "❌ **Channel filtering will NOT work**\n"
+                permission_text += "❌ **Janitor mode will NOT work**\n\n"
+                permission_text += "⚠️ **Bot needs to be promoted to administrator with 'Delete Messages' permission!**"
+                
+            elif status == "restricted":
+                permission_text += "🚫 **BOT IS RESTRICTED**\n\n"
+                permission_text += "❌ **Bot has restricted permissions**\n"
+                permission_text += "❌ **Most bot functions will NOT work**"
+                
+            elif status == "left":
+                permission_text += "👻 **BOT HAS LEFT THE CHAT**\n\n"
+                permission_text += "❌ **Bot is not in this chat**"
+                
+            elif status == "kicked":
+                permission_text += "🚫 **BOT IS BANNED**\n\n"
+                permission_text += "❌ **Bot has been kicked from this chat**"
+            
+            await update.message.reply_text(permission_text, parse_mode="Markdown")
+            logger.info(f"Bot permission check completed for chat {chat_id}: status={status}")
+            
+        except Exception as member_error:
+            logger.error(f"Error getting bot member info: {member_error}")
+            await update.message.reply_text(
+                f"❌ **Error checking bot permissions**\n\n"
+                f"Could not retrieve bot member information.\n"
+                f"Error: {str(member_error)}",
+                parse_mode="Markdown"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in check_all_permissions: {str(e)}")
+        await update.message.reply_text("❌ Error checking bot permissions.")
+
+
 def register_conversation_handlers(application):
     """Register command handlers with the application."""
     # Add command handlers
@@ -126,5 +252,6 @@ def register_conversation_handlers(application):
     application.add_handler(CommandHandler("disable_janitor", disable_janitor))
     application.add_handler(CommandHandler("status", show_settings))
     application.add_handler(CommandHandler("amiadmin", check_admin_status))
+    application.add_handler(CommandHandler("botperms", check_all_permissions))
     
     logger.info("Settings handlers registered") 
