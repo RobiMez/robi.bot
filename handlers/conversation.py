@@ -102,21 +102,28 @@ async def show_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def check_admin_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Debug command to check if a user is an admin."""
+    """Debug command to check if a user is an admin, using the best available display name."""
     try:
+        user = update.effective_user
+        
+        who = (
+            f"@{user.username}"
+            if user.username
+            else (user.full_name or str(user.id))
+        )
+
         is_admin = await is_user_admin(update)
-        user_id = update.effective_user.id
-        chat_id = update.effective_chat.id
-        
+
         if is_admin:
-            await update.message.reply_text(f"✅ User {user_id} is an admin in this chat.")
+            await update.message.reply_text(f"✅ {who} is an admin in this chat.")
         else:
-            await update.message.reply_text(f"❌ User {user_id} is NOT an admin in this chat.")
-        
-        logger.info(f"Admin status check: User {user_id} in chat {chat_id} is admin: {is_admin}")
+            await update.message.reply_text(f"❌ {who} is NOT an admin in this chat.")
+
+        logger.info(f"Admin status check: {who} ({user.id}) in chat {update.effective_chat.id} is admin: {is_admin}")
     except Exception as e:
-        logger.error(f"Error checking admin status: {str(e)}")
+        logger.error(f"Error checking admin status: {e}")
         await update.message.reply_text("Error checking admin status.")
+
 
 
 async def check_all_permissions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
