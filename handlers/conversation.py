@@ -109,7 +109,7 @@ async def check_admin_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
         who = (
             f"@{user.username}"
             if user.username
-            else (user.full_name or str(user.id))
+            else (str(user.id))
         )
 
         is_admin = await is_user_admin(update)
