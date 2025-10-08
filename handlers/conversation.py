@@ -188,6 +188,18 @@ async def handle_forward_spam(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not message:
             return
 
+        # Skip forwards from Telegram service (777000) - linked channel posts
+        if getattr(message, "forward_from", None) and message.forward_from.id == 777000:
+            return
+
+        # Skip forwards from the group's linked channel
+        if getattr(message, "forward_from_chat", None):
+            forward_chat = message.forward_from_chat
+            current_chat = update.effective_chat
+            # Check if it's from the linked channel of this group
+            if hasattr(current_chat, "linked_chat_id") and current_chat.linked_chat_id == forward_chat.id:
+                return
+
         # Prepare cache in chat_data
         cache: dict = context.chat_data.setdefault("fsp_cache", {})
         _cleanup_fsp_cache(cache)
