@@ -143,36 +143,97 @@ def _cleanup_fsp_cache(cache: dict) -> None:
 def _make_forward_key(message) -> str | None:
     """Create a stable key representing the original forwarded message.
 
-    Prefers channel forwards with original message ID. Falls back to user-based forwards.
+    Combines multiple signals for robust identification.
     Returns None if a safe key cannot be determined.
     """
-    # Channel post forwards: best signal
+    # Channel post forwards: best signal - has actual message ID
+    # Support both old API (forward_from_chat) and new API (forward_origin)
     if getattr(message, "forward_from_chat", None) and getattr(message, "forward_from_message_id", None):
         origin_chat_id = message.forward_from_chat.id
         origin_msg_id = message.forward_from_message_id
         return f"chat:{origin_chat_id}:msg:{origin_msg_id}"
+    
+    # New API: Check forward_origin for channel
+    if getattr(message, "forward_origin", None):
+        origin = message.forward_origin
+        # MessageOriginChannel
+        if hasattr(origin, "chat") and hasattr(origin, "message_id"):
+            return f"chat:{origin.chat.id}:msg:{origin.message_id}"
+        # MessageOriginUser
+        elif hasattr(origin, "sender_user"):
+            origin_user_id = origin.sender_user.id
+            key_parts = [f"user:{origin_user_id}"]
+            
+            # Add forward date as additional discriminator
+            if hasattr(origin, "date"):
+                key_parts.append(f"date:{int(origin.date.timestamp())}")
+            
+            # Add text/caption content if available
+            content = (message.text or message.caption or "").strip()
+            if content:
+                key_parts.append(f"text:{hash(content)}")
+            
+            # Add media file_unique_id for different media types
+            media_id = None
+            if getattr(message, "photo", None) and message.photo:
+                media_id = f"photo:{message.photo[-1].file_unique_id}"
+            elif getattr(message, "document", None):
+                media_id = f"doc:{message.document.file_unique_id}"
+            elif getattr(message, "video", None):
+                media_id = f"video:{message.video.file_unique_id}"
+            elif getattr(message, "audio", None):
+                media_id = f"audio:{message.audio.file_unique_id}"
+            elif getattr(message, "voice", None):
+                media_id = f"voice:{message.voice.file_unique_id}"
+            elif getattr(message, "sticker", None):
+                media_id = f"sticker:{message.sticker.file_unique_id}"
+            elif getattr(message, "animation", None):
+                media_id = f"animation:{message.animation.file_unique_id}"
+            elif getattr(message, "video_note", None):
+                media_id = f"videonote:{message.video_note.file_unique_id}"
+            
+            if media_id:
+                key_parts.append(media_id)
+            
+            # Only create key if we have date and (content or media)
+            if len(key_parts) >= 2:
+                return ":".join(key_parts)
 
-    # User forwards: no original message id; use sender id and content hash
+    # Old API: User forwards
     if getattr(message, "forward_from", None):
         origin_user_id = message.forward_from.id
-        # Use text/caption as best-effort discriminator
-        content = message.text or message.caption or ""
-        content = content.strip()
+        key_parts = [f"user:{origin_user_id}"]
+        
+        # Add text/caption content if available
+        content = (message.text or message.caption or "").strip()
         if content:
-            return f"user:{origin_user_id}:hash:{hash(content)}"
-        # If no textual content, try media file_unique_id when present
-        if getattr(message, "photo", None):
-            sizes = message.photo or []
-            if sizes:
-                return f"user:{origin_user_id}:photo:{sizes[-1].file_unique_id}"
-        if getattr(message, "document", None):
-            return f"user:{origin_user_id}:doc:{message.document.file_unique_id}"
-        if getattr(message, "video", None):
-            return f"user:{origin_user_id}:video:{message.video.file_unique_id}"
-        if getattr(message, "audio", None):
-            return f"user:{origin_user_id}:audio:{message.audio.file_unique_id}"
-        if getattr(message, "voice", None):
-            return f"user:{origin_user_id}:voice:{message.voice.file_unique_id}"
+            key_parts.append(f"text:{hash(content)}")
+        
+        # Add media file_unique_id for different media types
+        media_id = None
+        if getattr(message, "photo", None) and message.photo:
+            media_id = f"photo:{message.photo[-1].file_unique_id}"
+        elif getattr(message, "document", None):
+            media_id = f"doc:{message.document.file_unique_id}"
+        elif getattr(message, "video", None):
+            media_id = f"video:{message.video.file_unique_id}"
+        elif getattr(message, "audio", None):
+            media_id = f"audio:{message.audio.file_unique_id}"
+        elif getattr(message, "voice", None):
+            media_id = f"voice:{message.voice.file_unique_id}"
+        elif getattr(message, "sticker", None):
+            media_id = f"sticker:{message.sticker.file_unique_id}"
+        elif getattr(message, "animation", None):
+            media_id = f"animation:{message.animation.file_unique_id}"
+        elif getattr(message, "video_note", None):
+            media_id = f"videonote:{message.video_note.file_unique_id}"
+        
+        if media_id:
+            key_parts.append(media_id)
+        
+        # Only create key if we have content or media
+        if len(key_parts) > 1:
+            return ":".join(key_parts)
 
     # Anonymous/hidden sender name forwards or cases with no reliable key
     return None
@@ -188,17 +249,15 @@ async def handle_forward_spam(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not message:
             return
 
-        # Skip forwards from Telegram service (777000) - linked channel posts
-        if getattr(message, "forward_from", None) and message.forward_from.id == 777000:
+        # Skip automatic forwards from linked channels
+        if getattr(message, "is_automatic_forward", False) is True:
+            logger.info(f"FSP: Skipping automatic forward in chat {update.effective_chat.id}")
             return
 
-        # Skip forwards from the group's linked channel
-        if getattr(message, "forward_from_chat", None):
-            forward_chat = message.forward_from_chat
-            current_chat = update.effective_chat
-            # Check if it's from the linked channel of this group
-            if hasattr(current_chat, "linked_chat_id") and current_chat.linked_chat_id == forward_chat.id:
-                return
+        # Skip forwards from Telegram service (777000) - linked channel posts
+        if getattr(message, "forward_from", None) and message.forward_from.id == 777000:
+            logger.info(f"FSP: Skipping linked channel post (777000) in chat {update.effective_chat.id}")
+            return
 
         # Prepare cache in chat_data
         cache: dict = context.chat_data.setdefault("fsp_cache", {})
@@ -215,7 +274,7 @@ async def handle_forward_spam(update: Update, context: ContextTypes.DEFAULT_TYPE
             cache[key] = now
             # Optionally persist
             await context.application.update_persistence()
-            logger.debug(f"FSP: first seen key {key} in chat {update.effective_chat.id}")
+            logger.info(f"FSP: Tracking new forward key={key} in chat {update.effective_chat.id} from user {update.effective_user.id}")
             return
 
         # If seen before within 24 hours, delete this message
@@ -268,6 +327,7 @@ async def handle_forward_spam(update: Update, context: ContextTypes.DEFAULT_TYPE
             # Older than 24h: reset the window to now
             cache[key] = now
             await context.application.update_persistence()
+            logger.info(f"FSP: Reset tracking for forward key={key} in chat {update.effective_chat.id} from user {update.effective_user.id} (previous: {first_seen.isoformat()})")
     except Exception as e:
         logger.error(f"Error in handle_forward_spam: {e}")
 

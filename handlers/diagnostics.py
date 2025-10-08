@@ -31,6 +31,10 @@ async def track_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             # We need to await it to get the actual count
             member_count = await context.bot.get_chat_member_count(chat.id)
     except Exception as e:
+        # If bot is not a member (e.g., just left), skip silently
+        if "bot is not a member" in str(e).lower() or "forbidden" in str(e).lower():
+            logger.debug(f"Bot not in chat {chat.id} anymore, skipping member count")
+            return
         logger.error(f"Error getting member count for chat {chat.id}: {e}")
     
     # Store or update chat info with only serializable data
@@ -62,11 +66,11 @@ async def admin_list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     groups = [
         chat for chat_id, chat in context.bot_data["tracked_chats"].items() 
-        if chat.get("type") in ["group", "supergroup"]
+        if chat.get("type") in ["group", "supergroup", "channel"]
     ]
     
     if not groups:
-        await update.message.reply_text("Bot is not in any groups.")
+        await update.message.reply_text("Bot is not in any groups or channels.")
         return
     
     # Prepare a formatted list of groups
@@ -74,13 +78,13 @@ async def admin_list_groups(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"*{i+1}. {g['title']}*\n"
         f"ID: `{g['chat_id']}`\n"
         f"Type: {g['type']}\n"
-        f"Username: {g.get('username', 'None')}\n"
+        f"Username: {'@' + g['username'] if g.get('username') else 'None'}\n"
         f"Last activity: {g.get('last_activity', 'Unknown')}"
         for i, g in enumerate(groups)
     ])
     
     await update.message.reply_text(
-        f"🤖 *Bot is in {len(groups)} groups:*\n\n{groups_text}",
+        f"🤖 *Bot is in {len(groups)} groups/channels:*\n\n{groups_text}",
         parse_mode=ParseMode.MARKDOWN
     )
     logger.info(f"Admin {user_id} requested group list")
@@ -138,6 +142,41 @@ async def admin_group_filters(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode=ParseMode.MARKDOWN
     )
     logger.info(f"Admin {user_id} requested filters for group {group_id}")
+
+async def admin_leave_group(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Make the bot leave a specific group (admin only)."""
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        await update.message.reply_text("⛔ You are not authorized to use this command.")
+        logger.warning(f"Unauthorized access attempt to admin command by user {user_id}")
+        return
+    
+    # Get group ID from command arguments
+    if not context.args or len(context.args) < 1:
+        await update.message.reply_text(
+            "Please provide a chat ID. Use /admin_list_groups to see available groups."
+        )
+        return
+    
+    try:
+        chat_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid chat ID. Use /admin_list_groups to see available groups.")
+        return
+    
+    # Get chat name if available
+    chat_name = "Unknown"
+    if "tracked_chats" in context.bot_data and chat_id in context.bot_data["tracked_chats"]:
+        chat_name = context.bot_data["tracked_chats"][chat_id].get("title", "Unknown")
+    
+    try:
+        await context.bot.leave_chat(chat_id)
+        await update.message.reply_text(f"✅ Successfully left chat: {chat_name} (ID: {chat_id})")
+        logger.info(f"Admin {user_id} made bot leave chat {chat_id} ({chat_name})")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Failed to leave chat {chat_id}: {str(e)}")
+        logger.error(f"Error leaving chat {chat_id}: {e}")
 
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show bot statistics and diagnostics (admin only)."""
@@ -215,6 +254,7 @@ def register_diagnostic_handlers(application):
     # Admin commands
     application.add_handler(CommandHandler("admin_list_groups", admin_list_groups))
     application.add_handler(CommandHandler("admin_group_filters", admin_group_filters))
+    application.add_handler(CommandHandler("admin_leave_group", admin_leave_group))
     application.add_handler(CommandHandler("admin_stats", admin_stats))
     
     logger.info("Diagnostic handlers registered")
