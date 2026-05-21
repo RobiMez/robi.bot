@@ -28,6 +28,7 @@ Available commands:
 /poll - Create a poll (usage: /poll "Question" "Option1" "Option2")
 /enable_janitor - Enable message filtering
 /disable_janitor - Disable message filtering
+/toggle_nsfw_guard - Toggle NSFW profile picture guard for new members
 /status - Display current chat settings
 
 Filter management (requires janitor to be enabled):

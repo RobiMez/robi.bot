@@ -77,28 +77,32 @@ async def show_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     janitor_status = context.chat_data.get("janitorEnabled", False)
     channel_filter_status = context.chat_data.get("channelFilterEnabled", False)
     fsp_status = context.chat_data.get("forwardSpamProtectionEnabled", False)
-    
+    nsfw_guard_status = context.chat_data.get("nsfwGuardEnabled", False)
+
     # Count filter patterns
     filter_count = 0
     if "filter_patterns" in context.chat_data and context.chat_data["filter_patterns"]:
         filter_count = len(context.chat_data["filter_patterns"])
-    
+
     janitor_text = "enabled" if janitor_status else "disabled"
     channel_filter_text = "enabled" if channel_filter_status else "disabled"
     fsp_text = "enabled" if fsp_status else "disabled"
-    
+    nsfw_guard_text = "enabled" if nsfw_guard_status else "disabled"
+
     status_text = f"""
 *Current settings for this chat:*
 
 🧹 *Janitor:* {janitor_text}
 📺 *Channel Filter:* {channel_filter_text}
 🔁 *Forward Spam Protection:* {fsp_text}
+🩲 *NSFW Profile Guard:* {nsfw_guard_text}
 🔍 *Active Filters:* {filter_count} pattern(s)
 
 *Available Commands:*
 • `/enable_janitor` / `/disable_janitor` - Toggle message filtering
 • `/toggle_channel_filter` - Toggle external channel message filtering
 • `/toggle_forward_spam` - Toggle forward spam protection (delete repeated forwards within 24h)
+• `/toggle_nsfw_guard` - Toggle NSFW profile picture guard for new members
 • `/add_filter <pattern>` - Add regex filter
 • `/remove_filter <number>` - Remove filter
 • `/list_filters` - Show all filters
