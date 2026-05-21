@@ -1,9 +1,27 @@
 import logging
+import time
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 from telegram.constants import ParseMode
 import os
+
+
+def _format_uptime(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """Format bot uptime from bot_data['start_time']."""
+    start_time_iso = context.bot_data.get("start_time")
+    if not start_time_iso:
+        return "Unknown"
+    try:
+        start_time = datetime.fromisoformat(start_time_iso)
+        uptime = datetime.now() - start_time
+        days = uptime.days
+        hours, remainder = divmod(uptime.seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{days}d {hours}h {minutes}m {seconds}s"
+    except Exception as e:
+        logger.error(f"Error calculating uptime: {e}")
+        return "Error calculating"
 
 logger = logging.getLogger("telegram_bot")
 
@@ -178,15 +196,15 @@ async def admin_leave_group(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(f"❌ Failed to leave chat {chat_id}: {str(e)}")
         logger.error(f"Error leaving chat {chat_id}: {e}")
 
-async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show bot statistics and diagnostics (admin only)."""
     user_id = update.effective_user.id
-    
+
     if not is_admin(user_id):
         await update.message.reply_text("⛔ You are not authorized to use this command.")
         logger.warning(f"Unauthorized access attempt to admin command by user {user_id}")
         return
-    
+
     # Gather statistics
     total_chats = 0
     private_chats = 0
@@ -194,7 +212,7 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     supergroups = 0
     channels = 0
     total_filters = 0
-    
+
     if "tracked_chats" in context.bot_data:
         for chat_id, chat in context.bot_data["tracked_chats"].items():
             total_chats += 1
@@ -207,28 +225,10 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 supergroups += 1
             elif chat_type == "channel":
                 channels += 1
-            
-            # Count filters
+
             chat_data = context.application.chat_data.get(chat_id, {})
-            filters_count = len(chat_data.get("filter_patterns", []))
-            total_filters += filters_count
-    
-    # Bot uptime
-    bot_start_time = context.bot_data.get("start_time", "Unknown")
-    uptime_str = "Unknown"
-    if bot_start_time != "Unknown":
-        try:
-            start_time = datetime.fromisoformat(bot_start_time)
-            uptime = datetime.now() - start_time
-            days = uptime.days
-            hours, remainder = divmod(uptime.seconds, 3600)
-            minutes, seconds = divmod(remainder, 60)
-            uptime_str = f"{days}d {hours}h {minutes}m {seconds}s"
-        except Exception as e:
-            logger.error(f"Error calculating uptime: {e}")
-            uptime_str = "Error calculating"
-    
-    # Format statistics
+            total_filters += len(chat_data.get("filter_patterns", []))
+
     stats_text = (
         f"*🤖 Bot Statistics*\n\n"
         f"*Chats:*\n"
@@ -240,14 +240,36 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"*Filters:*\n"
         f"• Total filter patterns: {total_filters}\n\n"
         f"*Performance:*\n"
-        f"• Bot uptime: {uptime_str}\n"
+        f"• Bot uptime: {_format_uptime(context)}\n"
     )
-    
-    await update.message.reply_text(
-        stats_text,
-        parse_mode=ParseMode.MARKDOWN
-    )
+
+    await update.message.reply_text(stats_text, parse_mode=ParseMode.MARKDOWN)
     logger.info(f"Admin {user_id} requested bot statistics")
+
+
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Health check: round-trip latency, uptime, and pending updates."""
+    t0 = time.perf_counter()
+    msg = await update.message.reply_text("🏓 Pong…")
+    latency_ms = int((time.perf_counter() - t0) * 1000)
+
+    pending: str | int = "?"
+    try:
+        webhook_info = await context.bot.get_webhook_info()
+        pending = webhook_info.pending_update_count
+    except Exception as e:
+        logger.error(f"ping: failed to fetch webhook info: {e}")
+
+    text = (
+        f"🏓 *Pong*\n\n"
+        f"• Latency: `{latency_ms} ms`\n"
+        f"• Uptime: `{_format_uptime(context)}`\n"
+        f"• Pending updates: `{pending}`"
+    )
+    try:
+        await msg.edit_text(text, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.error(f"ping: failed to edit message: {e}")
 
 def register_diagnostic_handlers(application):
     """Register diagnostic handlers with the application."""
@@ -255,7 +277,8 @@ def register_diagnostic_handlers(application):
     application.add_handler(CommandHandler("admin_list_groups", admin_list_groups))
     application.add_handler(CommandHandler("admin_group_filters", admin_group_filters))
     application.add_handler(CommandHandler("admin_leave_group", admin_leave_group))
-    application.add_handler(CommandHandler("admin_stats", admin_stats))
+    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("ping", ping))
     
     logger.info("Diagnostic handlers registered")
 

@@ -23,6 +23,7 @@ Available commands:
 /start - Start the bot
 /hello - Get a hello message
 /help - Show this help message
+/ping - Show bot latency, uptime, and pending updates
 /joke - Get a random joke
 
 /poll - Create a poll (usage: /poll "Question" "Option1" "Option2")

@@ -37,7 +37,7 @@ Commands that mutate `chat_data` call `await context.application.update_persiste
 ### Two distinct admin concepts
 This is the most confusing thing in the codebase:
 - **Chat admin** — `@admin_only` decorator in `handlers/conversation.py` calls `update.effective_chat.get_administrators()` to check Telegram-side admin status. Used for per-chat feature toggles (`/enable_janitor`, `/add_filter`, `/toggle_channel_filter`, etc.). Private chats are always treated as admin.
-- **Bot owner** — hardcoded `ADMIN_USERS = [352475318]` list, duplicated in both `handlers/admin.py` (`@admin_required`) and `handlers/diagnostics.py` (`is_admin()`). Used for cross-chat commands (`/admin_list_groups`, `/admin_stats`, `/admin_leave_group`, `/admin_group_filters`). If you change the owner, update both lists.
+- **Bot owner** — hardcoded `ADMIN_USER_IDS = [352475318]` in `handlers/diagnostics.py`, checked via `is_admin()`. Used for cross-chat commands (`/stats`, `/admin_list_groups`, `/admin_leave_group`, `/admin_group_filters`). The `.env` also has an `ADMIN_USER_IDS` value but nothing currently reads it.
 
 ### Message handler ordering (PTB groups)
 PTB runs handlers in numeric group order. The codebase relies on this:
