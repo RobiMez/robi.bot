@@ -13,11 +13,13 @@ from handlers.conversation import admin_only
 logger = logging.getLogger("telegram_bot")
 
 SIGHTENGINE_URL = "https://api.sightengine.com/1.0/check.json"
-SIGHTENGINE_MODEL = "nudity-2.1"
+SIGHTENGINE_MODELS = "nudity-2.1,genai"
 # Trigger kick if any of these classes from nudity-2.1 exceeds the threshold.
 NSFW_CLASSES = ("sexual_activity", "sexual_display", "erotica")
 NSFW_THRESHOLD = 0.6
-KICK_MESSAGE = "👋 get properly dressed first"
+AI_GENERATED_THRESHOLD = 0.5
+NSFW_KICK_MESSAGE = "👋 get properly dressed first"
+AI_KICK_MESSAGE = "🤖 real photos only — no AI-generated avatars"
 
 
 def _sightengine_check(image_bytes: bytes) -> dict | None:
@@ -33,7 +35,7 @@ def _sightengine_check(image_bytes: bytes) -> dict | None:
             SIGHTENGINE_URL,
             files={"media": ("avatar.jpg", image_bytes)},
             data={
-                "models": SIGHTENGINE_MODEL,
+                "models": SIGHTENGINE_MODELS,
                 "api_user": api_user,
                 "api_secret": api_secret,
             },
@@ -53,6 +55,14 @@ def _is_nsfw(result: dict) -> tuple[bool, str]:
         score = nudity.get(cls)
         if isinstance(score, (int, float)) and score >= NSFW_THRESHOLD:
             return True, f"{cls}={score:.2f}"
+    return False, ""
+
+
+def _is_ai_generated(result: dict) -> tuple[bool, str]:
+    """Return (is_ai, reason) from a Sightengine genai response."""
+    score = (result.get("type") or {}).get("ai_generated")
+    if isinstance(score, (int, float)) and score >= AI_GENERATED_THRESHOLD:
+        return True, f"ai_generated={score:.2f}"
     return False, ""
 
 
@@ -91,9 +101,9 @@ async def toggle_nsfw_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     status = "enabled" if new_state else "disabled"
     emoji = "✅" if new_state else "❌"
     await update.message.reply_text(
-        f"{emoji} NSFW profile picture guard has been {status}.\n\n"
+        f"{emoji} Profile picture guard has been {status}.\n\n"
         f"When enabled, new members whose profile picture is flagged as NSFW "
-        f"will be kicked (they can rejoin once they change their picture)."
+        f"or AI-generated will be kicked (they can rejoin once they change it)."
     )
     logger.info(
         f"NSFW guard {status} in chat {update.effective_chat.id} by user {update.effective_user.id}"
@@ -131,18 +141,25 @@ async def check_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             )
             continue
 
-        is_nsfw, reason = _is_nsfw(result)
+        is_nsfw, nsfw_reason = _is_nsfw(result)
+        is_ai, ai_reason = _is_ai_generated(result)
         logger.info(
-            f"NSFW guard: user {member.id} in chat {chat.id} → nsfw={is_nsfw} {reason or ''}"
+            f"NSFW guard: user {member.id} in chat {chat.id} → "
+            f"nsfw={is_nsfw} {nsfw_reason} ai={is_ai} {ai_reason}"
         )
-        if not is_nsfw:
+
+        if is_nsfw:
+            kick_message, reason = NSFW_KICK_MESSAGE, nsfw_reason
+        elif is_ai:
+            kick_message, reason = AI_KICK_MESSAGE, ai_reason
+        else:
             continue
 
         try:
             await context.bot.ban_chat_member(chat.id, member.id)
             await context.bot.unban_chat_member(chat.id, member.id, only_if_banned=True)
             who = f"@{member.username}" if member.username else (member.first_name or str(member.id))
-            await chat.send_message(f"{KICK_MESSAGE} — {who}")
+            await chat.send_message(f"{kick_message} — {who}")
             logger.info(
                 f"NSFW guard: kicked user {member.id} from chat {chat.id} (reason: {reason})"
             )
