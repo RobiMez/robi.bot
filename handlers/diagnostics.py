@@ -213,9 +213,9 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 def register_diagnostic_handlers(application):
     """Register diagnostic handlers with the application."""
     # Admin commands
-    application.add_handler(CommandHandler("admin_list_groups", admin_list_groups))
-    application.add_handler(CommandHandler("admin_group_filters", admin_group_filters))
-    application.add_handler(CommandHandler("admin_stats", admin_stats))
+    #application.add_handler(CommandHandler("admin_list_groups", admin_list_groups))
+    #application.add_handler(CommandHandler("admin_group_filters", admin_group_filters))
+    #application.add_handler(CommandHandler("admin_stats", admin_stats))
     
     logger.info("Diagnostic handlers registered")
 

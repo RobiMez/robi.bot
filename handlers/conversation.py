@@ -255,10 +255,10 @@ async def check_all_permissions(update: Update, context: ContextTypes.DEFAULT_TY
 def register_conversation_handlers(application):
     """Register command handlers with the application."""
     # Add command handlers
-    application.add_handler(CommandHandler("enable_janitor", enable_janitor))
-    application.add_handler(CommandHandler("disable_janitor", disable_janitor))
-    application.add_handler(CommandHandler("status", show_settings))
-    application.add_handler(CommandHandler("amiadmin", check_admin_status))
+    #application.add_handler(CommandHandler("enable_janitor", enable_janitor))
+    #application.add_handler(CommandHandler("disable_janitor", disable_janitor))
+    #application.add_handler(CommandHandler("status", show_settings))
+    #application.add_handler(CommandHandler("amiadmin", check_admin_status))
     application.add_handler(CommandHandler("botperms", check_all_permissions))
     
     logger.info("Settings handlers registered") 

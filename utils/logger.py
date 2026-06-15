@@ -3,7 +3,7 @@ import os
 
 def setup_logger():
     """Configure and return a logger for the application."""
-    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = os.getenv("LOG_LEVEL", "DEBUG").upper()
     
     # Create logger
     logger = logging.getLogger("telegram_bot")

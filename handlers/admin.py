@@ -47,7 +47,7 @@ async def toggle_channel_filter(update: Update, context: ContextTypes.DEFAULT_TY
 
 def register_admin_handlers(application):
     """Register admin handlers with the application."""
-    application.add_handler(CommandHandler("toggle_channel_filter", toggle_channel_filter))
-    application.add_handler(CommandHandler("stats", stats))
+    #application.add_handler(CommandHandler("toggle_channel_filter", toggle_channel_filter))
+    #application.add_handler(CommandHandler("stats", stats))
     
     logger.info("Admin handlers registered") 

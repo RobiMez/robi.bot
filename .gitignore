@@ -4,4 +4,6 @@ __pycache__/
 *$py.class
 venv/
 .vscode/
-.idea/ 
+.idea/
+bot_data
+bot_data.* 
