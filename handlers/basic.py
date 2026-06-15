@@ -80,9 +80,23 @@ async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f'Hello {user.first_name}!')
 
 
+async def id_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    chat = update.effective_chat
+    lines = [
+        f"<b>User ID:</b> <code>{user.id}</code>",
+        f"<b>Chat ID:</b> <code>{chat.id}</code>",
+        f"<b>Chat type:</b> {chat.type}",
+    ]
+    if chat.username:
+        lines.append(f"<b>Chat username:</b> @{chat.username}")
+    await update.message.reply_html("\n".join(lines))
+
+
 def register_basic_handlers(application):
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("hello", hello))
+    application.add_handler(CommandHandler("id", id_command))
     allowed_chats = filters.Chat(chat_id=[2229651996]) | filters.Chat(username=["cmsv3"])
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(INSTAGRAM_REEL_REGEX) & filters.ChatType.GROUPS & allowed_chats, handle_instagram))
 
