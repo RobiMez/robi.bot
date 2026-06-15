@@ -83,6 +83,7 @@ async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 def register_basic_handlers(application):
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("hello", hello))
-    application.add_handler(MessageHandler(filters.TEXT & filters.Regex(INSTAGRAM_REEL_REGEX), handle_instagram))
+    allowed_chats = filters.Chat(chat_id=[2229651996], username=["cmsv3"])
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex(INSTAGRAM_REEL_REGEX) & filters.ChatType.GROUPS & allowed_chats, handle_instagram))
 
     logger.info("Basic handlers registered")
